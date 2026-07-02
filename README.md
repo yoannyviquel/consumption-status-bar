@@ -41,7 +41,7 @@ The displayed segments are an **ordered list** in `~/.claude/gradient-statusline
 | `model` | Current model name | microchip glyph, Claude clay/orange bg |
 | `dir` | Current directory name | folder glyph, solid bg |
 | `branch` | Current git branch (omitted outside a repo) | branch glyph, solid bg |
-| `eta` | Clock time the current ticket's **estimated production** finishes (`now + estimate − produced`) — needs a cached estimate from `/statusline-estimate`; hidden without a Jira key on the branch or an estimate | checkered-flag glyph, green→red by progress |
+| `eta` | Clock time the current task's **estimate** lands on — Claude records an estimate (start + minutes) before coding, or set one with `/statusline-eta <min>`; project-scoped, shows `+Xm` once overdue | checkered-flag glyph, green→red as consumed |
 | `status` | [status.claude.com](https://status.claude.com/) heartbeat + label — **only during an incident**, clickable | colored, hidden when operational |
 | `pr` | The session's pull requests as `<COMPONENT> #<n>` (component = repo acronym), clickable, wrapping onto extra rows | inline list |
 | `gap` | Splitter — everything after it is right-aligned to the window edge | — |

@@ -15,13 +15,12 @@
 //   model         : current model display name, on a Claude-orange background.
 //   dir           : current directory (git repo name if inside a repo).
 //   branch        : current git branch (if any).
-//   eta           : clock time at which the current ticket's estimated
-//                   production finishes = now + (estimate - time already
-//                   produced). The estimate comes from a local cache filled by
-//                   /statusline-estimate; the produced time from the memory
-//                   plugin (SQLite active_ms + the live session state file).
-//                   Shown only when the branch carries a Jira key AND that key
-//                   has a cached estimate.
+//   eta           : clock time the current task's estimate lands on. Claude
+//                   records an estimate (start + minutes) for the current project
+//                   before coding (set-eta.js / /statusline-eta); this shows
+//                   start + minutes as a clock, green→red as it's consumed, then
+//                   `+Xm` once overdue. Project-scoped, not tied to a ticket.
+//                   Shown only while an (un-cleared, <24h) estimate exists.
 // Every active element is a powerline segment: rounded cap on the very first,
 // filled chevrons between, rounded cap on the very last.
 //
@@ -77,7 +76,9 @@ const GLYPH = {
 // Windows Terminal) render it on 2 cells while visW() counts 1, which under-pads the
 // right-aligned strip and makes it drift when the quota reset prefixes appear. PUA
 // glyphs are unconditionally single-width, so measurement matches the render exactly.
-const ARROW = cp(0xf061); // nf-fa-arrow_right
+// Trailing space: some fonts render this PUA glyph slightly wide and it would
+// otherwise visually eat the first character of the reset label ("→6pm" → "→ 6pm").
+const ARROW = cp(0xf061) + ' '; // nf-fa-arrow_right
 
 // Fallback labels (used when no reset timestamp is provided).
 const LABELS = { ctx: 'ctx', fiveHour: ARROW + '5h', sevenDay: ARROW + '7j' };
@@ -750,96 +751,25 @@ function grad(f) {
   return [r, g, 0];
 }
 
-// --- eta: estimated-production finish time ----------------------------------
-// "At what clock time will the current ticket's estimated production be done?"
-//   ETA = now + max(0, estimate - already_produced)
-// estimate: from ~/.claude/statusline-estimates.json (filled by /statusline-estimate).
-// produced: sum of active_ms of the ticket's sessions (memory plugin SQLite) plus
-//           the live current session (its state file — not yet flushed to the DB).
-// Every step is best-effort: any failure drops the segment (returns null), never throws.
+// --- eta: estimated finish time of the current task -------------------------
+// "At what clock time does the current task's estimate land?" Claude records an
+// estimate (start + minutes) for the current project before it starts coding
+// (via set-eta.js / /statusline-eta); this element shows start + minutes as a
+// clock, turning green→red as the estimate is consumed, then `+Xm` once overdue.
+// Project-scoped (one estimate in flight per repo/dir), not tied to any ticket.
+// Best-effort: any failure or missing/stale estimate drops the segment (null).
 
-const ESTIMATES_PATH = () => path.join(os.homedir(), '.claude', 'statusline-estimates.json');
-const ETA_MEMO_PATH = () => path.join(os.homedir(), '.claude', 'statusline-eta.cache.json');
-const ETA_MEMO_TTL = 60 * 1000; // recompute the DB-derived produced time at most this often
-const DEFAULT_HOURS_PER_POINT = 3;
-
-// Memory plugin data locations — mirror memory/src/config.ts resolution.
-function memoryDataDir() {
-  return process.env.MEMORY_DATA_DIR || path.join(os.homedir(), '.claude-memory');
-}
-function memoryDbPath() {
-  return process.env.MEMORY_DB_PATH || path.join(memoryDataDir(), 'memories.db');
-}
-
-// Jira-style key embedded in a branch name, e.g. "feature/RUNITMCM-46297-fix" -> "RUNITMCM-46297".
-function extractJiraKey(branch) {
-  const m = /([A-Za-z][A-Za-z0-9]+-\d+)/.exec(String(branch || ''));
-  return m ? m[1].toUpperCase() : '';
-}
+const ETA_PATH = () => path.join(os.homedir(), '.claude', 'statusline-eta.json');
+const ETA_MAX_AGE = 24 * 60 * 60 * 1000; // ignore an estimate left un-cleared for over a day
 
 function readJson(p) {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')) || null; } catch { return null; }
 }
 
-// Estimated hours for a ticket from the local cache. `hours` wins; else points * ratio.
-function estimatedHours(ticket) {
-  const cache = readJson(ESTIMATES_PATH());
-  if (!cache) return 0;
-  const e = cache[ticket];
-  if (!e) return 0;
-  if (has(e.hours) && Number(e.hours) > 0) return Number(e.hours);
-  const ratio = Number(cache.hoursPerPoint) > 0 ? Number(cache.hoursPerPoint) : DEFAULT_HOURS_PER_POINT;
-  if (has(e.points) && Number(e.points) > 0) return Number(e.points) * ratio;
-  return 0;
-}
-
-// Active time already spent in COMPLETED sessions of the ticket (memory DB), memoized with a TTL so
-// the render path doesn't scan SQLite on every refresh. Matching is by branch containing the key.
-function producedFromDb(ticket) {
-  const memo = readJson(ETA_MEMO_PATH()) || {};
-  const hit = memo[ticket];
-  if (hit && typeof hit.producedMs === 'number' && Date.now() - (hit.ts || 0) < ETA_MEMO_TTL) {
-    return hit.producedMs;
-  }
-  let producedMs = 0;
-  try {
-    const dbPath = memoryDbPath();
-    if (!fs.existsSync(dbPath)) return 0; // don't let node:sqlite create an empty DB
-    const { DatabaseSync } = require('node:sqlite');
-    // NB: not readOnly — SQLite can't open a WAL database read-only (it needs to write the -shm
-    // wal-index). We issue only SELECTs, so a normal open takes no write lock.
-    const db = new DatabaseSync(dbPath);
-    try {
-      const row = db
-        .prepare(
-          "SELECT COALESCE(SUM(active_ms), 0) AS ms FROM memories WHERE type='session' AND branch LIKE '%' || ? || '%';",
-        )
-        .get(ticket);
-      producedMs = Number(row && row.ms) || 0;
-    } finally {
-      db.close();
-    }
-  } catch {
-    // DB absent/locked/node:sqlite unavailable → fall back to a stale memo if any, else 0.
-    if (hit && typeof hit.producedMs === 'number') return hit.producedMs;
-    return 0;
-  }
-  try {
-    memo[ticket] = { producedMs, ts: Date.now() };
-    fs.mkdirSync(path.dirname(ETA_MEMO_PATH()), { recursive: true });
-    fs.writeFileSync(ETA_MEMO_PATH(), JSON.stringify(memo), 'utf8');
-  } catch { /* memo is an optimization; ignore write failures */ }
-  return producedMs;
-}
-
-// Active time of the LIVE current session (its state file), added on top of the DB total because the
-// session rollup is only written at SessionEnd. Sanitize mirrors memory/src/state.ts.
-function liveSessionMs(d) {
-  const sid = d && d.session_id;
-  if (!has(sid)) return 0;
-  const safe = String(sid).replace(/[^A-Za-z0-9_.-]/g, '_');
-  const st = readJson(path.join(memoryDataDir(), 'state', `${safe}.json`));
-  return st && Number(st.activeMs) > 0 ? Number(st.activeMs) : 0;
+// Store key for the current work: the git repo root if any, else the directory.
+// Writer (set-eta.js) computes the same key from its cwd, so both agree.
+function projectKey(dir) {
+  return path.resolve(gitRoot(dir) || String(dir || process.cwd()));
 }
 
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -861,16 +791,18 @@ function fmtDurationShort(ms) {
 
 function etaSegment(d) {
   const cwd = d.workspace?.current_dir || d.cwd || process.cwd();
-  const ticket = extractJiraKey(gitBranch(cwd));
-  if (!ticket) return null;
-  const hours = estimatedHours(ticket);
-  if (!(hours > 0)) return null;
+  const store = readJson(ETA_PATH());
+  const e = store && store[projectKey(cwd)];
+  const startMs = Number(e && e.startMs);
+  const minutes = Number(e && e.minutes);
+  if (!(startMs > 0) || !(minutes > 0)) return null;
+  if (Date.now() - startMs > ETA_MAX_AGE) return null; // stale — estimate never cleared
 
-  const estMs = hours * 3600 * 1000;
-  const producedMs = producedFromDb(ticket) + liveSessionMs(d);
-  const remaining = estMs - producedMs;
-  // Green far from the target, red as it's reached/exceeded.
-  const bg = grad(Math.min(1, producedMs / estMs));
-  const label = remaining > 0 ? fmtClock(Date.now() + remaining) : `+${fmtDurationShort(-remaining)}`;
+  const estMs = minutes * 60000;
+  const endMs = startMs + estMs;
+  const remaining = endMs - Date.now();
+  // Green at the start, red as the estimate is consumed / exceeded.
+  const bg = grad(Math.min(1, Math.max(0, (Date.now() - startMs) / estMs)));
+  const label = remaining > 0 ? fmtClock(endMs) : `+${fmtDurationShort(-remaining)}`;
   return { glyph: GLYPH.flag, label, bg, fg: GAUGE_FG, family: 'gauge' };
 }

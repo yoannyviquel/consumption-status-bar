@@ -15,10 +15,9 @@ Elements:
 - `7d` — 7d rate-limit quota gauge
 - `dir` — current directory name
 - `branch` — current git branch (omitted outside a repo)
-- `eta` — clock time at which the current ticket's **estimated production**
-  finishes (`now + estimate − produced`). Needs a cached estimate for the branch's
-  Jira key — set one with `/statusline-estimate`. Hidden when the branch has no
-  Jira key or no cached estimate.
+- `eta` — clock time the current task's **estimate** lands on. Claude records an
+  estimate (start + minutes) before coding, or set one with `/statusline-eta <min>`.
+  Project-scoped; turns red with `+Xm` once overdue; hidden when no estimate is set.
 - `status` — Claude service status (status.claude.com): a colored heartbeat mark
   + label shown **only during an incident** (hidden when operational), and **only
   when the incident concerns the model in use** (e.g. a Haiku incident is hidden
