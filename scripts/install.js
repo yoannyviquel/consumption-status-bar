@@ -17,8 +17,11 @@ const srcScript = path.join(__dirname, 'statusline.js');
 const destScript = path.join(claudeDir, 'gradient-statusline.js');
 
 const ALL_TYPES = ['ctx', '5h', '7d', 'model', 'dir', 'branch', 'eta', 'status', 'pr', 'gap'];
-// Default elements when none were configured before: everything.
-const DEFAULT_ELEMENTS = ALL_TYPES.map((type) => ({ type }));
+// Default elements when none were configured before: every type, in display
+// order — location on the left, gauges right-aligned after `gap`. ALL_TYPES is
+// the accepted-token list, NOT a layout (it would leave `gap` last, i.e. inert).
+const DEFAULT_ORDER = ['dir', 'branch', 'eta', 'pr', 'gap', 'model', 'status', 'ctx', '5h', '7d'];
+const DEFAULT_ELEMENTS = DEFAULT_ORDER.map((type) => ({ type }));
 
 function fail(msg) { console.error('✗ ' + msg); process.exit(1); }
 
@@ -80,7 +83,11 @@ if (isOurs(prevCmd)) {
 }
 
 // Elements: keep a valid prior list (preserves customisation), else default.
-const elements = validElements(prevConfig.elements) || DEFAULT_ELEMENTS;
+// Exception: a list matching the old buggy default verbatim (ALL_TYPES order,
+// `gap` last = inert, gauges first) is nobody's deliberate choice — heal it.
+const BAD_DEFAULT = ALL_TYPES.join(' ');
+const prior = validElements(prevConfig.elements);
+const elements = (prior && prior.map((e) => e.type).join(' ') !== BAD_DEFAULT && prior) || DEFAULT_ELEMENTS;
 
 fs.writeFileSync(configPath, JSON.stringify({ baseCommand, elements }, null, 2) + '\n', 'utf8');
 

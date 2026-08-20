@@ -505,6 +505,25 @@ test('38. eta — estimate keyed to another project is ignored', () => {
   assert.ok(!strip(out).includes(FLAG), 'only the current project\'s estimate shows');
 });
 
+test('39. fresh install default — gap before the gauges, strip right-aligned', () => {
+  // Regression: DEFAULT_ELEMENTS used to be ALL_TYPES order, which put `gap`
+  // last — inert — so everything rendered left-aligned in gauges-first order.
+  const home = tmpdir('sb-install-');
+  const res = cpmod.spawnSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'install.js')], {
+    env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: 'utf8',
+  });
+  assert.strictEqual(res.status, 0, 'install.js exited ' + res.status + ': ' + res.stderr);
+  const cfg = JSON.parse(fs.readFileSync(path.join(home, '.claude', 'gradient-statusline.config.json'), 'utf8'));
+  const types = cfg.elements.map((e) => e.type);
+  const gi = types.indexOf('gap');
+  assert.ok(gi > 0, 'gap must not be first');
+  for (const t of ['ctx', '5h', '7d']) assert.ok(types.indexOf(t) > gi, t + ' must be right of gap');
+  for (const t of ['dir', 'branch']) assert.ok(types.indexOf(t) < gi, t + ' must be left of gap');
+
+  const out = run(cfg, full(gitDir('main')), { columns: 120 });
+  assert.strictEqual(visW(out), 120 - 4, 'default layout is padded to the right edge');
+});
+
 // --- run -------------------------------------------------------------------
 let failures = 0;
 for (const t of tests) {

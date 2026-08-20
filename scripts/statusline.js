@@ -125,8 +125,12 @@ if (process.argv.includes('--refresh-status')) {
 function safeParse(r) { try { return JSON.parse(r); } catch { return {}; } }
 function has(v) { return v !== undefined && v !== null && v !== ''; }
 
+// Same default layout as install.js: ALL_TYPES is the token list, not an order
+// (it would put `gap` last and right-align nothing).
+const DEFAULT_ORDER = ['dir', 'branch', 'eta', 'pr', 'gap', 'model', 'status', 'ctx', '5h', '7d'];
+
 function defaultElements() {
-  return ALL_TYPES.map((type) => ({ type }));
+  return DEFAULT_ORDER.map((type) => ({ type }));
 }
 
 // Normalise an arbitrary value into a clean elements array (or null if none).
