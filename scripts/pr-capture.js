@@ -4,8 +4,8 @@
 //
 // MCP-agnostic: it does NOT key off any specific tool name. On PostToolUse it
 // scans the tool input/response text for pull-request URLs (Azure DevOps/TFS,
-// GitHub, GitLab) and, when the activity looks like a PR *creation* (not merely
-// viewing one), upserts the PR — deduped by URL — into
+// GitHub, GitLab) and, when the *tool itself* is a PR-creation tool (not a read:
+// viewing, listing, commenting), upserts the PR — deduped by URL — into
 // ~/.claude/status-line-prs/<session_id>.json. With --purge (wired to
 // SessionEnd) it deletes the current session's file.
 //
@@ -57,13 +57,14 @@ function findPrs(text) {
   return out;
 }
 
-// Heuristic: does this tool activity look like a PR *creation* (vs merely
-// viewing/listing one)? Generic — checks for creation wording in the response,
-// or a create-pull-request shape in the tool name / input.
-function looksLikeCreation(haystack, toolName, toolInput) {
-  if (/created|successfully created|opened|pull request created|nouvelle\s+pull/i.test(haystack)) return true;
+// Is this tool a PR *creation* tool (vs a read: viewing, listing, commenting)?
+// Judged on the tool name / input only — never on the response text, which says
+// "createdBy" / "creationDate" / "createdAt" for a PR one merely looked at.
+// Generic (no MCP-specific name): matches tfs_createpullrequest,
+// create_pull_request, and `gh pr create` / `glab mr create` under Bash.
+function isCreationTool(toolName, toolInput) {
   const meta = String(toolName || '') + ' ' + safeStr(toolInput);
-  return /\bpr\s+create\b|create[-_\s]?pull[-_\s]?request|pull[-_\s]?request[-_\s]?create/i.test(meta);
+  return /\b(?:pr|mr)\s+create\b|create[-_\s]?(?:pull|merge)[-_\s]?request|(?:pull|merge)[-_\s]?request[-_\s]?create/i.test(meta);
 }
 
 // Upsert the found PRs into the session store (dedup by URL, creation order).
@@ -107,7 +108,7 @@ function upsert(sid, found) {
         if (!has(sid)) return done();
         const haystack = safeStr(ev.tool_response) + ' ' + safeStr(ev.tool_input);
         const found = findPrs(haystack);
-        if (found.length && looksLikeCreation(haystack, ev.tool_name, ev.tool_input)) upsert(sid, found);
+        if (found.length && isCreationTool(ev.tool_name, ev.tool_input)) upsert(sid, found);
         done();
       } catch { done(); }
     });

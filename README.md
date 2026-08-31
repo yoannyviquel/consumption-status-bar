@@ -27,7 +27,7 @@ Context window, 5h / 7d rate-limit quotas, model, directory, git branch, estimat
 
 Left to right: `dir` and `branch`, the session's `pr` (clickable), then right-aligned after `gap` — `model`, a `status` incident badge (`minor service outage`), and the `ctx` / `5h` / `7d` gauges with their dynamic reset times.
 
-Each gauge shows `NN%` and is tinted by its level (green = low, red = high). The `5h` / `7d` labels are the **dynamic reset time** reported by Claude Code (`→1am` same-day, `→Jun12` otherwise), falling back to `→5h` / `→7j`. `model` / `dir` / `branch` use solid backgrounds with white text. `status` only appears during a service incident.
+Each gauge shows `NN%` and is tinted by its level (green = low, red = high). The `5h` / `7d` labels are the **dynamic reset time** reported by Claude Code (`→1h00` same-day, `→Jun12` otherwise), falling back to `→5h` / `→7j`. `model` / `dir` / `branch` use solid backgrounds with white text. `status` only appears during a service incident.
 
 ## ✨ Segments
 
@@ -43,7 +43,7 @@ The displayed segments are an **ordered list** in `~/.claude/gradient-statusline
 | `branch` | Current git branch (omitted outside a repo) | branch glyph, solid bg |
 | `eta` | Clock time the current task's **estimate** lands on — Claude records an estimate (start + minutes) before coding, or set one with `/statusline-eta <min>`; project-scoped, shows `+Xm` once overdue | checkered-flag glyph, green→red as consumed |
 | `status` | [status.claude.com](https://status.claude.com/) heartbeat + label — **only during an incident**, clickable | colored, hidden when operational |
-| `pr` | The session's pull requests as `<COMPONENT> #<n>` (component = repo acronym), clickable, wrapping onto extra rows | inline list |
+| `pr` | The pull requests **created** during the session as `<COMPONENT> #<n>` (component = repo acronym), clickable, wrapping onto extra rows. PRs merely viewed are not listed | inline list |
 | `gap` | Splitter — everything after it is right-aligned to the window edge | — |
 
 > **Separators** are decided per segment *family*: same-family gauges (`ctx`/`5h`/`7d`) flow into each other via a colored chevron, location segments (`model`/`dir`/`branch`) merge the same way, and two differing families are split by a black band. These rules live in the `FAMILY` trait table in `scripts/statusline.js`.

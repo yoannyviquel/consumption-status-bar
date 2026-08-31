@@ -11,7 +11,7 @@
 // anytime with set-mode.js / /statusline-mode, no restart):
 //   ctx / 5h / 7d : gauge segments — background colored green->red by the usage
 //                   %, text = "<label> NN%". The 5h/7d labels show the dynamic
-//                   reset given by Claude Code (e.g. "→1am", "→Jun5").
+//                   reset given by Claude Code (e.g. "→1h00", "→Jun5").
 //   model         : current model display name, on a Claude-orange background.
 //   dir           : current directory (git repo name if inside a repo).
 //   branch        : current git branch (if any).
@@ -77,7 +77,7 @@ const GLYPH = {
 // right-aligned strip and makes it drift when the quota reset prefixes appear. PUA
 // glyphs are unconditionally single-width, so measurement matches the render exactly.
 // Trailing space: some fonts render this PUA glyph slightly wide and it would
-// otherwise visually eat the first character of the reset label ("→6pm" → "→ 6pm").
+// otherwise visually eat the first character of the reset label ("→6h00" → "→ 6h00").
 const ARROW = cp(0xf061) + ' '; // nf-fa-arrow_right
 
 // Fallback labels (used when no reset timestamp is provided).
@@ -725,18 +725,13 @@ function gitBranch(start) {
 }
 
 // --- reset timestamp -------------------------------------------------------
-// Format a reset timestamp (unix seconds) as "10pm" or "Apr18".
+// Format a reset timestamp (unix seconds) as "22h00" or "Apr18".
 function fmtReset(ts, forceTime) {
   if (!has(ts)) return '';
   const d = new Date(ts * 1000);
   const now = new Date();
   const sameDay = d.toDateString() === now.toDateString() || forceTime;
-  if (sameDay) {
-    const h = d.getHours();
-    const ampm = h >= 12 ? 'pm' : 'am';
-    const h12 = h % 12 || 12;
-    return `${h12}${ampm}`;
-  }
+  if (sameDay) return fmtClock(d.getTime());
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${months[d.getMonth()]}${d.getDate()}`;
 }

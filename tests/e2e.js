@@ -369,13 +369,19 @@ test('22. pr-capture ignores a viewed (non-created) PR', () => {
   assert.ok(!fs.existsSync(prFile(home, 'cap-2')), 'no capture for a merely viewed PR');
 });
 
-test('23. pr-capture --purge removes the session file', () => {
+test("23. pr-capture --purge keeps the live session but sweeps stale files", () => {
+  // --purge is TTL-only on purpose: a resumed session must still find its PRs.
   const home = capHome();
-  capture(home, { session_id: 'cap-3', tool_name: 'x_create_pull_request', tool_response: 'created ' + TFS_PR(8) });
-  assert.ok(fs.existsSync(prFile(home, 'cap-3')), 'captured before purge');
+  capture(home, { session_id: "cap-3", tool_name: "x_create_pull_request", tool_response: "created " + TFS_PR(8) });
+  assert.ok(fs.existsSync(prFile(home, "cap-3")), "captured");
+  const stale = prFile(home, "cap-stale");
+  fs.writeFileSync(stale, JSON.stringify({ updatedAt: 0, prs: [] }), "utf8");
+  const old = Date.now() - 8 * 24 * 60 * 60 * 1000;
+  fs.utimesSync(stale, old / 1000, old / 1000);
   const env = { ...process.env, HOME: home, USERPROFILE: home };
-  cpmod.spawnSync(process.execPath, [CAP, '--purge'], { input: JSON.stringify({ session_id: 'cap-3' }), env, encoding: 'utf8' });
-  assert.ok(!fs.existsSync(prFile(home, 'cap-3')), 'purged on SessionEnd');
+  cpmod.spawnSync(process.execPath, [CAP, "--purge"], { input: JSON.stringify({ session_id: "cap-3" }), env, encoding: "utf8" });
+  assert.ok(fs.existsSync(prFile(home, "cap-3")), "live session kept for a resume");
+  assert.ok(!fs.existsSync(stale), "file older than the TTL swept");
 });
 
 test('24. pr-capture is a no-op when the pr element is disabled', () => {
@@ -522,6 +528,29 @@ test('39. fresh install default — gap before the gauges, strip right-aligned',
 
   const out = run(cfg, full(gitDir('main')), { columns: 120 });
   assert.strictEqual(visW(out), 120 - 4, 'default layout is padded to the right edge');
+});
+
+test("40. 5h reset label is a 24h clock (NNhMM), never am/pm", () => {
+  const out = strip(run(els("5h"), data({ ctx: 20, fiveHour: 9, fiveReset: FIVE })));
+  const d = new Date(FIVE * 1000);
+  const expected = d.getHours() + "h" + String(d.getMinutes()).padStart(2, "0");
+  assert.ok(out.includes(expected), `expected the reset as ${expected}, got ${JSON.stringify(out)}`);
+  assert.ok(!/ds?[ap]m/i.test(out), `no 12h am/pm label, got ${JSON.stringify(out)}`);
+});
+
+test("41. pr-capture ignores a read whose payload says createdBy/creationDate", () => {
+  // Regression: the old heuristic tested /created/i on the response text, so
+  // merely reading a PR (createdBy, creationDate, createdAt) captured it.
+  const home = capHome();
+  capture(home, {
+    session_id: "cap-5",
+    tool_name: "mcp__plugin_microsoft-tfs_tfs__tfs_getpullrequest",
+    tool_response: JSON.stringify({
+      pullRequestId: 5, status: "active", url: TFS_PR(5),
+      createdBy: { displayName: "Someone" }, creationDate: "2026-08-30T09:12:00Z",
+    }),
+  });
+  assert.ok(!fs.existsSync(prFile(home, "cap-5")), "a read must not be captured");
 });
 
 // --- run -------------------------------------------------------------------
