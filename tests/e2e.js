@@ -19,6 +19,8 @@ const LEFTCAP = String.fromCodePoint(0xe0b6);
 const RIGHTCAP = String.fromCodePoint(0xe0b4);
 const SEP = String.fromCodePoint(0xe0b0);
 const DARK_BG = '48;2;12;12;12'; // black band background
+// Columns reserved around the strip (must mirror EDGE_RESERVE in statusline.js).
+const EDGE_RESERVE = 6;
 
 // --- tmp dirs --------------------------------------------------------------
 const tmps = [];
@@ -188,7 +190,7 @@ test('6. gap right-align (dir branch gap ctx 5h 7d, COLUMNS=120)', () => {
   const out = run(els('dir', 'branch', 'gap', 'ctx', '5h', '7d'), full(gitDir('main')), { columns: 120 });
   startsAndEndsCapped(out, { strips: 2 }); // two strips => 2 caps each side
   assert.strictEqual(count(out, SEP), 1 + 2, 'left strip 1 (dir-branch) + right strip 2 (gauge merges)');
-  assert.strictEqual(visW(out), 120 - 4, 'visible width = COLUMNS - EDGE_RESERVE');
+  assert.strictEqual(visW(out), 120 - EDGE_RESERVE, 'visible width = COLUMNS - EDGE_RESERVE');
   // a run of padding spaces separates the two strips
   assert.ok(/ {5,}/.test(strip(out)), 'padding spaces between strips');
 });
@@ -278,7 +280,7 @@ test('15. status stale beyond hard TTL — dot hidden', () => {
 test('16. status with gap — width correct despite invisible hyperlink', () => {
   const out = run(els('dir', 'gap', 'status'), full(plainDir()), { columns: 120, statusCache: freshCache('major') });
   startsAndEndsCapped(out, { strips: 2 });
-  assert.strictEqual(visW(out), 120 - 4, 'OSC 8 URL must not count toward width');
+  assert.strictEqual(visW(out), 120 - EDGE_RESERVE, 'OSC 8 URL must not count toward width');
   assert.ok(strip(out).includes(DOT), 'shows the status dot in the right strip');
 });
 
@@ -527,7 +529,7 @@ test('39. fresh install default — gap before the gauges, strip right-aligned',
   for (const t of ['dir', 'branch']) assert.ok(types.indexOf(t) < gi, t + ' must be left of gap');
 
   const out = run(cfg, full(gitDir('main')), { columns: 120 });
-  assert.strictEqual(visW(out), 120 - 4, 'default layout is padded to the right edge');
+  assert.strictEqual(visW(out), 120 - EDGE_RESERVE, 'default layout is padded to the right edge');
 });
 
 test("40. 5h reset label is a 24h clock (NNhMM), never am/pm", () => {
